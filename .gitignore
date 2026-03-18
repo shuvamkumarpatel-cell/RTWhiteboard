@@ -1,0 +1,7 @@
+.dotnet/
+.appdata/
+.nuget/
+backend/**/bin/
+backend/**/obj/
+frontend/node_modules/
+frontend/dist/

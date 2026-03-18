@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: realtime-whiteboard-api
+    runtime: dotnet
+    rootDir: backend/Whiteboard.Api
+    buildCommand: dotnet publish -c Release -o out
+    startCommand: dotnet ./out/Whiteboard.Api.dll
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: FRONTEND_ORIGINS
+        sync: false
