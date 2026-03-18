@@ -1,11 +1,11 @@
 services:
   - type: web
     name: realtime-whiteboard-api
-    runtime: dotnet
-    rootDir: backend/Whiteboard.Api
-    buildCommand: dotnet publish -c Release -o out
-    startCommand: dotnet ./out/Whiteboard.Api.dll
+    runtime: docker
+    dockerfilePath: ./backend/Whiteboard.Api/Dockerfile
+    dockerContext: .
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production

@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY ["backend/Whiteboard.Api/Whiteboard.Api.csproj", "backend/Whiteboard.Api/"]
+COPY ["backend/NuGet.Config", "backend/"]
+RUN dotnet restore "backend/Whiteboard.Api/Whiteboard.Api.csproj" --configfile "backend/NuGet.Config"
+
+COPY . .
+RUN dotnet publish "backend/Whiteboard.Api/Whiteboard.Api.csproj" -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:10000
+EXPOSE 10000
+
+ENTRYPOINT ["dotnet", "Whiteboard.Api.dll"]
