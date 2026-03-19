@@ -149,6 +149,10 @@ h2 {
   gap: 0.75rem;
 }
 
+.panel-header.compact {
+  align-items: baseline;
+}
+
 .button-row {
   justify-content: stretch;
 }
@@ -172,11 +176,51 @@ h2 {
   color: #fdba74;
 }
 
+.helper-text {
+  margin: 0;
+  color: #bfd3ea;
+  line-height: 1.5;
+}
+
 .swatches,
-.participant-list {
+.participant-list,
+.tool-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.tool-grid {
+  gap: 0.6rem;
+}
+
+.tool-chip,
+.toggle-chip {
+  padding: 0.7rem 1rem;
+  border-radius: 1rem;
+  background: rgba(51, 65, 85, 0.8);
+  color: #cbd5e1;
+}
+
+.tool-chip.active,
+.toggle-chip.active {
+  background: #0ea5e9;
+  color: #082f49;
+}
+
+.tool-badge {
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.14);
+  color: #7dd3fc;
+  text-transform: capitalize;
+  font-size: 0.9rem;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
 }
 
 .swatch {
@@ -226,7 +270,19 @@ h2 {
   height: 100%;
   display: block;
   touch-action: none;
+}
+
+.board-canvas.tool-pen,
+.board-canvas.tool-eraser,
+.board-canvas.tool-line,
+.board-canvas.tool-arrow,
+.board-canvas.tool-rectangle,
+.board-canvas.tool-ellipse {
   cursor: crosshair;
+}
+
+.board-canvas.tool-text {
+  cursor: text;
 }
 
 @media (max-width: 900px) {
@@ -241,5 +297,10 @@ h2 {
   .workspace-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }

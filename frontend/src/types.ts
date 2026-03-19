@@ -1,14 +1,27 @@
-export type StrokePoint = {
+export type BoardPoint = {
   x: number;
   y: number;
 };
 
-export type Stroke = {
+export type BoardTool =
+  | "pen"
+  | "eraser"
+  | "line"
+  | "arrow"
+  | "rectangle"
+  | "ellipse"
+  | "text";
+
+export type BoardElement = {
   id: string;
   userId: string;
+  kind: BoardTool;
   color: string;
   width: number;
-  points: StrokePoint[];
+  points: BoardPoint[];
+  text?: string | null;
+  fontSize: number;
+  isFilled: boolean;
   createdAt: string;
 };
 
@@ -21,7 +34,7 @@ export type Participant = {
 
 export type RoomState = {
   roomId: string;
-  strokes: Stroke[];
+  elements: BoardElement[];
   participants: Participant[];
   updatedAt: string;
 };

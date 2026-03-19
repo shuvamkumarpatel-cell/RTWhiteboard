@@ -7,10 +7,26 @@ import {
 } from "@microsoft/signalr";
 import { createRoom, endpoints, fetchRoom } from "./lib/api";
 import { redrawCanvas } from "./lib/drawing";
-import type { Participant, RoomState, Stroke, StrokePoint } from "./types";
+import type {
+  BoardElement,
+  BoardPoint,
+  BoardTool,
+  Participant,
+  RoomState,
+} from "./types";
 
 const palette = ["#0f172a", "#2563eb", "#0891b2", "#16a34a", "#ea580c", "#dc2626"];
 const brushSizes = [2, 4, 8, 12];
+const fontSizes = [18, 24, 32, 40];
+const toolDefinitions: Array<{ value: BoardTool; label: string }> = [
+  { value: "pen", label: "Pen" },
+  { value: "eraser", label: "Eraser" },
+  { value: "line", label: "Line" },
+  { value: "arrow", label: "Arrow" },
+  { value: "rectangle", label: "Rectangle" },
+  { value: "ellipse", label: "Ellipse" },
+  { value: "text", label: "Text" },
+];
 
 const randomId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -28,10 +44,13 @@ function App() {
   const [userId] = useState(randomId);
   const [status, setStatus] = useState("Disconnected");
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [elements, setElements] = useState<BoardElement[]>([]);
+  const [selectedTool, setSelectedTool] = useState<BoardTool>("pen");
   const [selectedColor, setSelectedColor] = useState(palette[1]);
   const [selectedWidth, setSelectedWidth] = useState(4);
-  const [draftPoints, setDraftPoints] = useState<StrokePoint[]>([]);
+  const [selectedFontSize, setSelectedFontSize] = useState(24);
+  const [isFilled, setIsFilled] = useState(false);
+  const [draftElement, setDraftElement] = useState<Omit<BoardElement, "id" | "userId" | "createdAt"> | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -39,18 +58,18 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const isDrawingRef = useRef(false);
-
-  const draftStroke = useMemo(
-    () =>
-      draftPoints.length > 0
-        ? {
-            color: selectedColor,
-            width: selectedWidth,
-            points: draftPoints,
-          }
-        : null,
-    [draftPoints, selectedColor, selectedWidth],
+  const draftElementRef = useRef<Omit<BoardElement, "id" | "userId" | "createdAt"> | null>(
+    null,
   );
+
+  const updateDraftElement = (
+    value: Omit<BoardElement, "id" | "userId" | "createdAt"> | null,
+  ) => {
+    draftElementRef.current = value;
+    setDraftElement(value);
+  };
+
+  const draftPreview = useMemo(() => draftElement, [draftElement]);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -73,7 +92,7 @@ function App() {
       const context = canvas.getContext("2d");
       context?.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-      redrawCanvas(canvas, strokes, draftStroke);
+      redrawCanvas(canvas, elements, draftPreview);
     };
 
     resizeCanvas();
@@ -86,15 +105,15 @@ function App() {
       observer.disconnect();
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, [draftStroke, strokes]);
+  }, [draftPreview, elements]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
 
     if (canvas) {
-      redrawCanvas(canvas, strokes, draftStroke);
+      redrawCanvas(canvas, elements, draftPreview);
     }
-  }, [draftStroke, strokes]);
+  }, [draftPreview, elements]);
 
   useEffect(() => {
     return () => {
@@ -104,7 +123,7 @@ function App() {
 
   const syncRoomState = (room: RoomState) => {
     setParticipants(room.participants);
-    setStrokes(room.strokes);
+    setElements(room.elements);
   };
 
   const connectToRoom = async (targetRoomId: string) => {
@@ -136,12 +155,8 @@ function App() {
       setParticipants(nextParticipants);
     });
 
-    connection.on("StrokeAdded", (stroke: Stroke) => {
-      setStrokes((current) => [...current, stroke]);
-    });
-
     connection.on("BoardCleared", () => {
-      setStrokes([]);
+      setElements([]);
     });
 
     connection.onreconnecting(() => {
@@ -200,7 +215,47 @@ function App() {
     };
   };
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const sendElement = async (
+    nextElement: Omit<BoardElement, "id" | "userId" | "createdAt">,
+  ) => {
+    if (!connectionRef.current) {
+      setErrorMessage("Connect to a room before editing the board.");
+      return;
+    }
+
+    try {
+      await connectionRef.current.invoke("AddBoardElement", {
+        roomId,
+        elementId: randomId(),
+        userId,
+        kind: nextElement.kind,
+        color: nextElement.color,
+        width: nextElement.width,
+        points: nextElement.points,
+        text: nextElement.text ?? null,
+        fontSize: nextElement.fontSize,
+        isFilled: nextElement.isFilled,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to send the board change.",
+      );
+    }
+  };
+
+  const buildDraftElement = (point: BoardPoint) => ({
+    kind: selectedTool,
+    color: selectedColor,
+    width: selectedWidth,
+    points: [point],
+    text: null,
+    fontSize: selectedFontSize,
+    isFilled,
+  });
+
+  const handlePointerDown = async (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
     if (!connectionRef.current) {
       setErrorMessage("Connect to a room before drawing.");
       return;
@@ -212,8 +267,29 @@ function App() {
       return;
     }
 
+    setErrorMessage(null);
+
+    if (selectedTool === "text") {
+      const text = window.prompt("Enter text for the board:");
+
+      if (!text?.trim()) {
+        return;
+      }
+
+      await sendElement({
+        kind: "text",
+        color: selectedColor,
+        width: selectedWidth,
+        points: [point],
+        text: text.trim(),
+        fontSize: selectedFontSize,
+        isFilled: false,
+      });
+      return;
+    }
+
     isDrawingRef.current = true;
-    setDraftPoints([point]);
+    updateDraftElement(buildDraftElement(point));
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -228,7 +304,24 @@ function App() {
       return;
     }
 
-    setDraftPoints((current) => [...current, point]);
+    const currentDraft = draftElementRef.current;
+
+    if (!currentDraft) {
+      return;
+    }
+
+    if (currentDraft.kind === "pen" || currentDraft.kind === "eraser") {
+      updateDraftElement({
+        ...currentDraft,
+        points: [...currentDraft.points, point],
+      });
+      return;
+    }
+
+    updateDraftElement({
+      ...currentDraft,
+      points: [currentDraft.points[0], point],
+    });
   };
 
   const finishStroke = async () => {
@@ -238,29 +331,20 @@ function App() {
 
     isDrawingRef.current = false;
 
-    if (draftPoints.length === 0 || !connectionRef.current) {
-      setDraftPoints([]);
+    const currentDraft = draftElementRef.current;
+
+    if (!currentDraft || !connectionRef.current) {
+      updateDraftElement(null);
       return;
     }
 
-    const strokeId = randomId();
-    const points = draftPoints;
-    setDraftPoints([]);
-
-    try {
-      await connectionRef.current.invoke("AddStroke", {
-        roomId,
-        strokeId,
-        userId,
-        color: selectedColor,
-        width: selectedWidth,
-        points,
-      });
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Unable to send the stroke.",
-      );
+    if (currentDraft.points.length === 0) {
+      updateDraftElement(null);
+      return;
     }
+
+    updateDraftElement(null);
+    await sendElement(currentDraft);
   };
 
   const clearBoard = async () => {
@@ -277,6 +361,20 @@ function App() {
     }
   };
 
+  const undoLastAction = async () => {
+    if (!connectionRef.current) {
+      return;
+    }
+
+    try {
+      await connectionRef.current.invoke("UndoLastAction", roomId, userId);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to undo the last action.",
+      );
+    }
+  };
+
   const createAndJoinRoom = async () => {
     try {
       const room = await createRoom();
@@ -289,6 +387,12 @@ function App() {
   };
 
   const activeParticipantNames = participants.map((participant) => participant.name);
+  const boardHelpText =
+    selectedTool === "text"
+      ? "Click anywhere on the board to place a text note."
+      : selectedTool === "pen" || selectedTool === "eraser"
+        ? "Drag on the board to draw."
+        : "Drag on the board to place the selected shape.";
 
   return (
     <div className="app-shell">
@@ -336,10 +440,36 @@ function App() {
 
         <section className="panel">
           <div className="panel-header">
-            <h2>Brush</h2>
-            <button className="ghost" onClick={() => void clearBoard()}>
-              Clear board
-            </button>
+            <h2>Tools</h2>
+            <span className="tool-badge">{selectedTool}</span>
+          </div>
+
+          <div className="tool-grid">
+            {toolDefinitions.map((tool) => (
+              <button
+                key={tool.value}
+                className={tool.value === selectedTool ? "tool-chip active" : "tool-chip"}
+                onClick={() => setSelectedTool(tool.value)}
+              >
+                {tool.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="helper-text">{boardHelpText}</p>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Style</h2>
+            <div className="toolbar-actions">
+              <button className="ghost" onClick={() => void undoLastAction()}>
+                Undo mine
+              </button>
+              <button className="ghost" onClick={() => void clearBoard()}>
+                Clear board
+              </button>
+            </div>
           </div>
 
           <div className="swatches">
@@ -365,6 +495,30 @@ function App() {
               </button>
             ))}
           </div>
+
+          <div className="panel-header compact">
+            <h2>Text size</h2>
+            <span>{selectedFontSize}px</span>
+          </div>
+
+          <div className="size-row">
+            {fontSizes.map((size) => (
+              <button
+                key={size}
+                className={size === selectedFontSize ? "size-pill active" : "size-pill"}
+                onClick={() => setSelectedFontSize(size)}
+              >
+                {size}px
+              </button>
+            ))}
+          </div>
+
+          <button
+            className={isFilled ? "toggle-chip active" : "toggle-chip"}
+            onClick={() => setIsFilled((current) => !current)}
+          >
+            {isFilled ? "Filled shapes on" : "Filled shapes off"}
+          </button>
         </section>
 
         <section className="panel">
@@ -404,7 +558,8 @@ function App() {
         <div className="board" ref={boardRef}>
           <canvas
             ref={canvasRef}
-            onPointerDown={handlePointerDown}
+            className={`board-canvas tool-${selectedTool}`}
+            onPointerDown={(event) => void handlePointerDown(event)}
             onPointerMove={handlePointerMove}
             onPointerUp={() => void finishStroke()}
             onPointerLeave={() => void finishStroke()}

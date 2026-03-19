@@ -27,26 +27,39 @@ public sealed class WhiteboardHub(IWhiteboardRoomStore roomStore) : Hub
         await Clients.Group(request.RoomId).SendAsync("ParticipantsUpdated", state.Participants);
     }
 
-    public async Task AddStroke(AddStrokeRequest request)
+    public async Task AddBoardElement(AddBoardElementRequest request)
     {
-        var stroke = new WhiteboardStroke(
-            request.StrokeId,
+        var element = new WhiteboardElement(
+            request.ElementId,
             request.UserId,
+            request.Kind,
             request.Color,
             request.Width,
             request.Points,
+            request.Text,
+            request.FontSize,
+            request.IsFilled,
             DateTimeOffset.UtcNow);
 
-        var state = _roomStore.AddStroke(request.RoomId, stroke);
+        var state = _roomStore.AddElement(request.RoomId, element);
 
-        await Clients.Group(request.RoomId).SendAsync("StrokeAdded", stroke);
+        await Clients.Group(request.RoomId).SendAsync("ElementAdded", element);
+        await Clients.Group(request.RoomId).SendAsync("RoomStateSynchronized", state);
         await Clients.Group(request.RoomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
+    }
+
+    public async Task UndoLastAction(string roomId, string userId)
+    {
+        var state = _roomStore.RemoveLatestElementByUser(roomId, userId);
+        await Clients.Group(roomId).SendAsync("RoomStateSynchronized", state);
+        await Clients.Group(roomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
     }
 
     public async Task ClearBoard(string roomId)
     {
         var state = _roomStore.ClearRoom(roomId);
         await Clients.Group(roomId).SendAsync("BoardCleared");
+        await Clients.Group(roomId).SendAsync("RoomStateSynchronized", state);
         await Clients.Group(roomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
     }
 

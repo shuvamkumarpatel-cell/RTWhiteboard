@@ -38,12 +38,27 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         }
     }
 
-    public WhiteboardRoomState AddStroke(string roomId, WhiteboardStroke stroke)
+    public WhiteboardRoomState AddElement(string roomId, WhiteboardElement element)
     {
         var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
         lock (room.SyncRoot)
         {
-            room.Strokes.Add(stroke);
+            room.Elements.Add(element);
+            room.Touch();
+            return room.ToState();
+        }
+    }
+
+    public WhiteboardRoomState RemoveLatestElementByUser(string roomId, string userId)
+    {
+        var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
+        lock (room.SyncRoot)
+        {
+            var index = room.Elements.FindLastIndex(element => string.Equals(element.UserId, userId, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                room.Elements.RemoveAt(index);
+            }
             room.Touch();
             return room.ToState();
         }
@@ -54,7 +69,7 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
         lock (room.SyncRoot)
         {
-            room.Strokes.Clear();
+            room.Elements.Clear();
             room.Touch();
             return room.ToState();
         }
@@ -65,7 +80,7 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         public string RoomId { get; init; } = string.Empty;
         public DateTimeOffset CreatedAt { get; init; }
         public DateTimeOffset UpdatedAt { get; private set; }
-        public List<WhiteboardStroke> Strokes { get; } = [];
+        public List<WhiteboardElement> Elements { get; } = [];
         public Dictionary<string, WhiteboardParticipant> Participants { get; } = new(StringComparer.Ordinal);
         public object SyncRoot { get; } = new();
 
@@ -83,7 +98,7 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
             new(
                 RoomId,
                 CreatedAt,
-                Strokes.ToArray(),
+                Elements.ToArray(),
                 Participants.Values
                     .OrderBy(participant => participant.Name, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),

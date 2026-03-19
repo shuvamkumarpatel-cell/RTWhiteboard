@@ -1,7 +1,12 @@
 .dotnet/
 .appdata/
 .nuget/
+.vs/
 backend/**/bin/
 backend/**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
 frontend/node_modules/
 frontend/dist/
