@@ -49,6 +49,26 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         }
     }
 
+    public WhiteboardRoomState UpdateElement(string roomId, WhiteboardElement element)
+    {
+        var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
+        lock (room.SyncRoot)
+        {
+            var index = room.Elements.FindIndex(current => string.Equals(current.Id, element.Id, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                room.Elements[index] = element;
+            }
+            else
+            {
+                room.Elements.Add(element);
+            }
+
+            room.Touch();
+            return room.ToState();
+        }
+    }
+
     public WhiteboardRoomState RemoveLatestElementByUser(string roomId, string userId)
     {
         var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);

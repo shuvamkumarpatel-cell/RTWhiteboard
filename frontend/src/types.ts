@@ -4,6 +4,7 @@ export type BoardPoint = {
 };
 
 export type BoardTool =
+  | "select"
   | "pen"
   | "eraser"
   | "line"

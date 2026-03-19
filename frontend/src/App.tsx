@@ -6,7 +6,12 @@ import {
   LogLevel,
 } from "@microsoft/signalr";
 import { createRoom, endpoints, fetchRoom } from "./lib/api";
-import { redrawCanvas } from "./lib/drawing";
+import {
+  getElementBounds,
+  hitTestElement,
+  redrawCanvas,
+  translateElement,
+} from "./lib/drawing";
 import type {
   BoardElement,
   BoardPoint,
@@ -19,6 +24,7 @@ const palette = ["#0f172a", "#2563eb", "#0891b2", "#16a34a", "#ea580c", "#dc2626
 const brushSizes = [2, 4, 8, 12];
 const fontSizes = [18, 24, 32, 40];
 const toolDefinitions: Array<{ value: BoardTool; label: string }> = [
+  { value: "select", label: "Select" },
   { value: "pen", label: "Pen" },
   { value: "eraser", label: "Eraser" },
   { value: "line", label: "Line" },
@@ -27,6 +33,21 @@ const toolDefinitions: Array<{ value: BoardTool; label: string }> = [
   { value: "ellipse", label: "Ellipse" },
   { value: "text", label: "Text" },
 ];
+
+type DraftElement = Omit<BoardElement, "id" | "userId" | "createdAt">;
+
+type TextEditorState = {
+  elementId: string | null;
+  position: BoardPoint;
+  value: string;
+};
+
+type DragState = {
+  elementId: string;
+  pointerId: number;
+  origin: BoardPoint;
+  baseElement: BoardElement;
+};
 
 const randomId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -45,31 +66,36 @@ function App() {
   const [status, setStatus] = useState("Disconnected");
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [elements, setElements] = useState<BoardElement[]>([]);
-  const [selectedTool, setSelectedTool] = useState<BoardTool>("pen");
+  const [selectedTool, setSelectedTool] = useState<BoardTool>("select");
   const [selectedColor, setSelectedColor] = useState(palette[1]);
   const [selectedWidth, setSelectedWidth] = useState(4);
   const [selectedFontSize, setSelectedFontSize] = useState(24);
   const [isFilled, setIsFilled] = useState(false);
-  const [draftElement, setDraftElement] = useState<Omit<BoardElement, "id" | "userId" | "createdAt"> | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [draftElement, setDraftElement] = useState<DraftElement | null>(null);
+  const [textEditor, setTextEditor] = useState<TextEditorState | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const connectionRef = useRef<HubConnection | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const isDrawingRef = useRef(false);
-  const draftElementRef = useRef<Omit<BoardElement, "id" | "userId" | "createdAt"> | null>(
-    null,
-  );
+  const draftElementRef = useRef<DraftElement | null>(null);
+  const dragRef = useRef<DragState | null>(null);
 
-  const updateDraftElement = (
-    value: Omit<BoardElement, "id" | "userId" | "createdAt"> | null,
-  ) => {
+  const updateDraftElement = (value: DraftElement | null) => {
     draftElementRef.current = value;
     setDraftElement(value);
   };
 
   const draftPreview = useMemo(() => draftElement, [draftElement]);
+
+  const selectedElement = useMemo(
+    () => elements.find((element) => element.id === selectedElementId) ?? null,
+    [elements, selectedElementId],
+  );
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -92,7 +118,7 @@ function App() {
       const context = canvas.getContext("2d");
       context?.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-      redrawCanvas(canvas, elements, draftPreview);
+      redrawCanvas(canvas, elements, draftPreview, selectedElementId);
     };
 
     resizeCanvas();
@@ -105,15 +131,27 @@ function App() {
       observer.disconnect();
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, [draftPreview, elements]);
+  }, [draftPreview, elements, selectedElementId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
 
     if (canvas) {
-      redrawCanvas(canvas, elements, draftPreview);
+      redrawCanvas(canvas, elements, draftPreview, selectedElementId);
     }
-  }, [draftPreview, elements]);
+  }, [draftPreview, elements, selectedElementId]);
+
+  useEffect(() => {
+    if (selectedElementId && !elements.some((element) => element.id === selectedElementId)) {
+      setSelectedElementId(null);
+    }
+  }, [elements, selectedElementId]);
+
+  useEffect(() => {
+    if (textEditor) {
+      textAreaRef.current?.focus();
+    }
+  }, [textEditor]);
 
   useEffect(() => {
     return () => {
@@ -157,6 +195,8 @@ function App() {
 
     connection.on("BoardCleared", () => {
       setElements([]);
+      setSelectedElementId(null);
+      setTextEditor(null);
     });
 
     connection.onreconnecting(() => {
@@ -215,9 +255,25 @@ function App() {
     };
   };
 
-  const sendElement = async (
-    nextElement: Omit<BoardElement, "id" | "userId" | "createdAt">,
-  ) => {
+  const findElementAtPoint = (point: BoardPoint) => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return null;
+    }
+
+    for (let index = elements.length - 1; index >= 0; index -= 1) {
+      const element = elements[index];
+
+      if (hitTestElement(canvas, element, point)) {
+        return element;
+      }
+    }
+
+    return null;
+  };
+
+  const sendElement = async (nextElement: DraftElement) => {
     if (!connectionRef.current) {
       setErrorMessage("Connect to a room before editing the board.");
       return;
@@ -243,7 +299,33 @@ function App() {
     }
   };
 
-  const buildDraftElement = (point: BoardPoint) => ({
+  const updateElement = async (nextElement: BoardElement) => {
+    if (!connectionRef.current) {
+      setErrorMessage("Connect to a room before editing the board.");
+      return;
+    }
+
+    try {
+      await connectionRef.current.invoke("UpdateBoardElement", {
+        roomId,
+        elementId: nextElement.id,
+        userId: nextElement.userId,
+        kind: nextElement.kind,
+        color: nextElement.color,
+        width: nextElement.width,
+        points: nextElement.points,
+        text: nextElement.text ?? null,
+        fontSize: nextElement.fontSize,
+        isFilled: nextElement.isFilled,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to update the board element.",
+      );
+    }
+  };
+
+  const buildDraftElement = (point: BoardPoint): DraftElement => ({
     kind: selectedTool,
     color: selectedColor,
     width: selectedWidth,
@@ -253,7 +335,82 @@ function App() {
     isFilled,
   });
 
-  const handlePointerDown = async (
+  const openTextEditor = (point: BoardPoint, element?: BoardElement | null) => {
+    const nextEditor =
+      element && element.kind === "text"
+        ? {
+            elementId: element.id,
+            position: element.points[0] ?? point,
+            value: element.text ?? "",
+          }
+        : {
+            elementId: null,
+            position: point,
+            value: "",
+          };
+
+    if (element) {
+      setSelectedElementId(element.id);
+      setSelectedColor(element.color);
+      setSelectedFontSize(element.fontSize);
+    } else {
+      setSelectedElementId(null);
+    }
+
+    setTextEditor(nextEditor);
+  };
+
+  const closeTextEditor = () => {
+    setTextEditor(null);
+  };
+
+  const submitTextEditor = async () => {
+    if (!textEditor) {
+      return;
+    }
+
+    const trimmedValue = textEditor.value.trim();
+
+    if (!trimmedValue) {
+      closeTextEditor();
+      return;
+    }
+
+    if (textEditor.elementId) {
+      const existingElement = elements.find((element) => element.id === textEditor.elementId);
+
+      if (existingElement) {
+        const updatedElement: BoardElement = {
+          ...existingElement,
+          text: trimmedValue,
+          fontSize: selectedFontSize,
+          color: selectedColor,
+          points: [textEditor.position],
+        };
+
+        setElements((current) =>
+          current.map((element) =>
+            element.id === updatedElement.id ? updatedElement : element,
+          ),
+        );
+        await updateElement(updatedElement);
+      }
+    } else {
+      await sendElement({
+        kind: "text",
+        color: selectedColor,
+        width: selectedWidth,
+        points: [textEditor.position],
+        text: trimmedValue,
+        fontSize: selectedFontSize,
+        isFilled: false,
+      });
+    }
+
+    closeTextEditor();
+  };
+
+  const handlePointerDown = (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => {
     if (!connectionRef.current) {
@@ -270,37 +427,57 @@ function App() {
     setErrorMessage(null);
 
     if (selectedTool === "text") {
-      const text = window.prompt("Enter text for the board:");
-
-      if (!text?.trim()) {
-        return;
-      }
-
-      await sendElement({
-        kind: "text",
-        color: selectedColor,
-        width: selectedWidth,
-        points: [point],
-        text: text.trim(),
-        fontSize: selectedFontSize,
-        isFilled: false,
-      });
+      const hitElement = findElementAtPoint(point);
+      openTextEditor(point, hitElement?.kind === "text" ? hitElement : null);
       return;
     }
 
+    if (selectedTool === "select") {
+      const hitElement = findElementAtPoint(point);
+      setSelectedElementId(hitElement?.id ?? null);
+
+      if (!hitElement) {
+        return;
+      }
+
+      dragRef.current = {
+        elementId: hitElement.id,
+        pointerId: event.pointerId,
+        origin: point,
+        baseElement: hitElement,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    setTextEditor(null);
+    setSelectedElementId(null);
     isDrawingRef.current = true;
     updateDraftElement(buildDraftElement(point));
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current) {
-      return;
-    }
-
     const point = getCanvasPoint(event);
 
     if (!point) {
+      return;
+    }
+
+    const dragState = dragRef.current;
+
+    if (dragState) {
+      const deltaX = point.x - dragState.origin.x;
+      const deltaY = point.y - dragState.origin.y;
+      const movedElement = translateElement(dragState.baseElement, deltaX, deltaY);
+
+      setElements((current) =>
+        current.map((element) => (element.id === movedElement.id ? movedElement : element)),
+      );
+      return;
+    }
+
+    if (!isDrawingRef.current) {
       return;
     }
 
@@ -324,7 +501,25 @@ function App() {
     });
   };
 
-  const finishStroke = async () => {
+  const finishInteraction = async (
+    event?: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    const point = event ? getCanvasPoint(event) : null;
+
+    if (dragRef.current) {
+      const dragState = dragRef.current;
+      const currentPoint = point ?? dragState.origin;
+      const movedElement = translateElement(
+        dragState.baseElement,
+        currentPoint.x - dragState.origin.x,
+        currentPoint.y - dragState.origin.y,
+      );
+
+      dragRef.current = null;
+      await updateElement(movedElement);
+      return;
+    }
+
     if (!isDrawingRef.current) {
       return;
     }
@@ -354,6 +549,8 @@ function App() {
 
     try {
       await connectionRef.current.invoke("ClearBoard", roomId);
+      setSelectedElementId(null);
+      setTextEditor(null);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to clear the board.",
@@ -387,12 +584,36 @@ function App() {
   };
 
   const activeParticipantNames = participants.map((participant) => participant.name);
+
   const boardHelpText =
-    selectedTool === "text"
-      ? "Click anywhere on the board to place a text note."
-      : selectedTool === "pen" || selectedTool === "eraser"
-        ? "Drag on the board to draw."
-        : "Drag on the board to place the selected shape.";
+    selectedTool === "select"
+      ? "Click an item to select it, then drag to move it around the board."
+      : selectedTool === "text"
+        ? "Click on the board to open an inline text editor, or click existing text to edit it."
+        : selectedTool === "pen" || selectedTool === "eraser"
+          ? "Drag on the board to draw."
+          : "Drag on the board to place the selected shape.";
+
+  const editorStyle = useMemo(() => {
+    if (!textEditor || !boardRef.current) {
+      return null;
+    }
+
+    return {
+      left: `${Math.max(textEditor.position.x, 12)}px`,
+      top: `${Math.max(textEditor.position.y, 12)}px`,
+      color: selectedColor,
+      fontSize: `${selectedFontSize}px`,
+    };
+  }, [selectedColor, selectedFontSize, textEditor]);
+
+  const selectedElementMeta = useMemo(() => {
+    if (!selectedElement || !canvasRef.current) {
+      return null;
+    }
+
+    return getElementBounds(canvasRef.current, selectedElement);
+  }, [selectedElement]);
 
   return (
     <div className="app-shell">
@@ -519,6 +740,12 @@ function App() {
           >
             {isFilled ? "Filled shapes on" : "Filled shapes off"}
           </button>
+
+          {selectedElement ? (
+            <p className="helper-text">
+              Selected: <strong>{selectedElement.kind}</strong>
+            </p>
+          ) : null}
         </section>
 
         <section className="panel">
@@ -559,11 +786,55 @@ function App() {
           <canvas
             ref={canvasRef}
             className={`board-canvas tool-${selectedTool}`}
-            onPointerDown={(event) => void handlePointerDown(event)}
+            onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
-            onPointerUp={() => void finishStroke()}
-            onPointerLeave={() => void finishStroke()}
+            onPointerUp={(event) => void finishInteraction(event)}
+            onPointerLeave={(event) => void finishInteraction(event)}
           />
+
+          {selectedElementMeta ? (
+            <div
+              className="selection-chip"
+              style={{
+                left: `${selectedElementMeta.x}px`,
+                top: `${Math.max(selectedElementMeta.y - 34, 8)}px`,
+              }}
+            >
+              Drag to move
+            </div>
+          ) : null}
+
+          {textEditor && editorStyle ? (
+            <div className="text-editor" style={editorStyle}>
+              <textarea
+                ref={textAreaRef}
+                value={textEditor.value}
+                onChange={(event) =>
+                  setTextEditor((current) =>
+                    current
+                      ? {
+                          ...current,
+                          value: event.target.value,
+                        }
+                      : current,
+                  )
+                }
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void submitTextEditor();
+                  }
+                }}
+                placeholder="Type your text..."
+              />
+              <div className="text-editor-actions">
+                <button onClick={() => void submitTextEditor()}>Save</button>
+                <button className="secondary" onClick={closeTextEditor}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </main>
     </div>

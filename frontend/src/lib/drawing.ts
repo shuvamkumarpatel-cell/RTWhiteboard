@@ -5,6 +5,13 @@ type DrawableElement = Pick<
   "kind" | "color" | "width" | "points" | "text" | "fontSize" | "isFilled"
 >;
 
+type ElementBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 function withAlpha(color: string, alpha: number) {
   const normalized = color.trim();
 
@@ -27,6 +34,113 @@ function getStartAndEnd(points: BoardPoint[]) {
   }
 
   return { start, end };
+}
+
+function distanceBetweenPoints(start: BoardPoint, end: BoardPoint) {
+  return Math.hypot(end.x - start.x, end.y - start.y);
+}
+
+function distanceToSegment(point: BoardPoint, start: BoardPoint, end: BoardPoint) {
+  const lengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+
+  if (lengthSquared === 0) {
+    return distanceBetweenPoints(point, start);
+  }
+
+  const projection =
+    ((point.x - start.x) * (end.x - start.x) +
+      (point.y - start.y) * (end.y - start.y)) /
+    lengthSquared;
+  const clamped = Math.max(0, Math.min(1, projection));
+
+  return distanceBetweenPoints(point, {
+    x: start.x + clamped * (end.x - start.x),
+    y: start.y + clamped * (end.y - start.y),
+  });
+}
+
+function getTextMetrics(
+  context: CanvasRenderingContext2D,
+  element: Pick<BoardElement, "text" | "fontSize">,
+) {
+  const lines = (element.text ?? "").split(/\r?\n/);
+  const width = lines.reduce((maxWidth, line) => {
+    return Math.max(maxWidth, context.measureText(line || " ").width);
+  }, 0);
+  const lineHeight = element.fontSize + 6;
+
+  return {
+    lineHeight,
+    width: Math.max(width, element.fontSize),
+    height: Math.max(lineHeight * lines.length, lineHeight),
+  };
+}
+
+export function getElementBounds(
+  canvas: HTMLCanvasElement,
+  element: DrawableElement,
+): ElementBounds | null {
+  const context = canvas.getContext("2d");
+
+  if (!context || element.points.length === 0) {
+    return null;
+  }
+
+  if (element.kind === "text") {
+    const anchor = element.points[0];
+
+    if (!anchor) {
+      return null;
+    }
+
+    context.save();
+    context.font = `${element.fontSize}px "Segoe UI", sans-serif`;
+    const metrics = getTextMetrics(context, element);
+    context.restore();
+
+    return {
+      x: anchor.x,
+      y: anchor.y,
+      width: metrics.width,
+      height: metrics.height,
+    };
+  }
+
+  const xs = element.points.map((point) => point.x);
+  const ys = element.points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const padding = Math.max(element.width, 8);
+
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: Math.max(maxX - minX + padding * 2, padding * 2),
+    height: Math.max(maxY - minY + padding * 2, padding * 2),
+  };
+}
+
+function drawSelectionOutline(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  element: DrawableElement,
+) {
+  const bounds = getElementBounds(canvas, element);
+
+  if (!bounds) {
+    return;
+  }
+
+  context.save();
+  context.strokeStyle = "#7dd3fc";
+  context.fillStyle = "rgba(125, 211, 252, 0.08)";
+  context.lineWidth = 1.5;
+  context.setLineDash([8, 6]);
+  context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+  context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+  context.restore();
 }
 
 function drawFreehand(
@@ -192,10 +306,85 @@ function drawElement(context: CanvasRenderingContext2D, element: DrawableElement
   }
 }
 
+export function translateElement(element: BoardElement, deltaX: number, deltaY: number) {
+  return {
+    ...element,
+    points: element.points.map((point) => ({
+      x: point.x + deltaX,
+      y: point.y + deltaY,
+    })),
+  };
+}
+
+export function hitTestElement(
+  canvas: HTMLCanvasElement,
+  element: BoardElement,
+  point: BoardPoint,
+) {
+  if (element.points.length === 0) {
+    return false;
+  }
+
+  const tolerance = Math.max(element.width + 6, 10);
+
+  switch (element.kind) {
+    case "pen":
+    case "eraser":
+      for (let index = 1; index < element.points.length; index += 1) {
+        if (
+          distanceToSegment(point, element.points[index - 1], element.points[index]) <=
+          tolerance
+        ) {
+          return true;
+        }
+      }
+      return distanceBetweenPoints(point, element.points[0]) <= tolerance;
+    case "line":
+    case "arrow": {
+      const coordinates = getStartAndEnd(element.points);
+      return coordinates
+        ? distanceToSegment(point, coordinates.start, coordinates.end) <= tolerance
+        : false;
+    }
+    case "rectangle":
+    case "ellipse": {
+      const bounds = getElementBounds(canvas, element);
+
+      if (!bounds) {
+        return false;
+      }
+
+      return (
+        point.x >= bounds.x &&
+        point.x <= bounds.x + bounds.width &&
+        point.y >= bounds.y &&
+        point.y <= bounds.y + bounds.height
+      );
+    }
+    case "text": {
+      const bounds = getElementBounds(canvas, element);
+
+      if (!bounds) {
+        return false;
+      }
+
+      return (
+        point.x >= bounds.x &&
+        point.x <= bounds.x + bounds.width &&
+        point.y >= bounds.y &&
+        point.y <= bounds.y + bounds.height
+      );
+    }
+    default:
+      return false;
+  }
+}
+
 export function redrawCanvas(
   canvas: HTMLCanvasElement,
   elements: BoardElement[],
   draftElement: DrawableElement | null,
+  selectedElementId?: string | null,
 ) {
   const context = canvas.getContext("2d");
 
@@ -214,5 +403,13 @@ export function redrawCanvas(
 
   if (draftElement) {
     drawElement(context, draftElement);
+  }
+
+  if (selectedElementId) {
+    const selectedElement = elements.find((element) => element.id === selectedElementId);
+
+    if (selectedElement) {
+      drawSelectionOutline(context, canvas, selectedElement);
+    }
   }
 }

@@ -48,6 +48,29 @@ public sealed class WhiteboardHub(IWhiteboardRoomStore roomStore) : Hub
         await Clients.Group(request.RoomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
     }
 
+    public async Task UpdateBoardElement(UpdateBoardElementRequest request)
+    {
+        var existingState = _roomStore.GetOrCreateRoom(request.RoomId);
+        var existingElement = existingState.Elements.FirstOrDefault(element => string.Equals(element.Id, request.ElementId, StringComparison.Ordinal));
+
+        var element = new WhiteboardElement(
+            request.ElementId,
+            request.UserId,
+            request.Kind,
+            request.Color,
+            request.Width,
+            request.Points,
+            request.Text,
+            request.FontSize,
+            request.IsFilled,
+            existingElement?.CreatedAt ?? DateTimeOffset.UtcNow);
+
+        var state = _roomStore.UpdateElement(request.RoomId, element);
+
+        await Clients.Group(request.RoomId).SendAsync("RoomStateSynchronized", state);
+        await Clients.Group(request.RoomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
+    }
+
     public async Task UndoLastAction(string roomId, string userId)
     {
         var state = _roomStore.RemoveLatestElementByUser(roomId, userId);

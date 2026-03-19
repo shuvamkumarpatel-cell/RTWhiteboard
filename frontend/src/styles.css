@@ -281,8 +281,53 @@ h2 {
   cursor: crosshair;
 }
 
+.board-canvas.tool-select {
+  cursor: grab;
+}
+
 .board-canvas.tool-text {
   cursor: text;
+}
+
+.selection-chip {
+  position: absolute;
+  z-index: 2;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(8, 15, 30, 0.88);
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  color: #e0f2fe;
+  font-size: 0.82rem;
+  pointer-events: none;
+}
+
+.text-editor {
+  position: absolute;
+  z-index: 3;
+  width: min(320px, calc(100% - 24px));
+  padding: 0.8rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  background: rgba(8, 15, 30, 0.94);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.38);
+}
+
+.text-editor textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.text-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
 }
 
 @media (max-width: 900px) {
