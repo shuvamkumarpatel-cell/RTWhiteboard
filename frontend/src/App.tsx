@@ -49,6 +49,11 @@ type DragState = {
   baseElement: BoardElement;
 };
 
+type AutoSelectState = {
+  elementId: string;
+  returnTool: BoardTool;
+};
+
 const randomId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -84,6 +89,7 @@ function App() {
   const isDrawingRef = useRef(false);
   const draftElementRef = useRef<DraftElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const autoSelectRef = useRef<AutoSelectState | null>(null);
 
   const updateDraftElement = (value: DraftElement | null) => {
     draftElementRef.current = value;
@@ -144,6 +150,9 @@ function App() {
   useEffect(() => {
     if (selectedElementId && !elements.some((element) => element.id === selectedElementId)) {
       setSelectedElementId(null);
+      if (autoSelectRef.current?.elementId === selectedElementId) {
+        autoSelectRef.current = null;
+      }
     }
   }, [elements, selectedElementId]);
 
@@ -276,13 +285,29 @@ function App() {
   const sendElement = async (nextElement: DraftElement) => {
     if (!connectionRef.current) {
       setErrorMessage("Connect to a room before editing the board.");
-      return;
+      return null;
     }
+
+    const elementId = randomId();
+    const localElement: BoardElement = {
+      id: elementId,
+      userId,
+      kind: nextElement.kind,
+      color: nextElement.color,
+      width: nextElement.width,
+      points: nextElement.points,
+      text: nextElement.text ?? null,
+      fontSize: nextElement.fontSize,
+      isFilled: nextElement.isFilled,
+      createdAt: new Date().toISOString(),
+    };
+
+    setElements((current) => [...current, localElement]);
 
     try {
       await connectionRef.current.invoke("AddBoardElement", {
         roomId,
-        elementId: randomId(),
+        elementId,
         userId,
         kind: nextElement.kind,
         color: nextElement.color,
@@ -297,6 +322,8 @@ function App() {
         error instanceof Error ? error.message : "Unable to send the board change.",
       );
     }
+
+    return localElement;
   };
 
   const updateElement = async (nextElement: BoardElement) => {
@@ -364,6 +391,15 @@ function App() {
     setTextEditor(null);
   };
 
+  const armAutoSelect = (elementId: string, returnTool: BoardTool) => {
+    autoSelectRef.current = {
+      elementId,
+      returnTool,
+    };
+    setSelectedElementId(elementId);
+    setSelectedTool("select");
+  };
+
   const submitTextEditor = async () => {
     if (!textEditor) {
       return;
@@ -393,10 +429,12 @@ function App() {
             element.id === updatedElement.id ? updatedElement : element,
           ),
         );
+        setSelectedElementId(updatedElement.id);
         await updateElement(updatedElement);
       }
     } else {
-      await sendElement({
+      const returnTool = selectedTool;
+      const createdElement = await sendElement({
         kind: "text",
         color: selectedColor,
         width: selectedWidth,
@@ -405,6 +443,10 @@ function App() {
         fontSize: selectedFontSize,
         isFilled: false,
       });
+
+      if (createdElement) {
+        armAutoSelect(createdElement.id, returnTool);
+      }
     }
 
     closeTextEditor();
@@ -437,6 +479,7 @@ function App() {
       setSelectedElementId(hitElement?.id ?? null);
 
       if (!hitElement) {
+        autoSelectRef.current = null;
         return;
       }
 
@@ -452,6 +495,7 @@ function App() {
 
     setTextEditor(null);
     setSelectedElementId(null);
+    autoSelectRef.current = null;
     isDrawingRef.current = true;
     updateDraftElement(buildDraftElement(point));
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -517,6 +561,12 @@ function App() {
 
       dragRef.current = null;
       await updateElement(movedElement);
+
+      if (autoSelectRef.current?.elementId === movedElement.id) {
+        setSelectedTool(autoSelectRef.current.returnTool);
+        autoSelectRef.current = null;
+      }
+
       return;
     }
 
@@ -539,7 +589,12 @@ function App() {
     }
 
     updateDraftElement(null);
-    await sendElement(currentDraft);
+    const returnTool = selectedTool;
+    const createdElement = await sendElement(currentDraft);
+
+    if (createdElement) {
+      armAutoSelect(createdElement.id, returnTool);
+    }
   };
 
   const clearBoard = async () => {
