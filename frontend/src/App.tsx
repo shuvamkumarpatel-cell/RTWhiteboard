@@ -663,6 +663,26 @@ function App() {
     }
   };
 
+  const deleteSelectedElement = async () => {
+    if (!connectionRef.current || !selectedElement) {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+
+    setElements((current) => current.filter((element) => element.id !== elementId));
+    setSelectedElementId(null);
+    autoSelectRef.current = null;
+
+    try {
+      await connectionRef.current.invoke("DeleteBoardElement", roomId, elementId);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete the selected element.",
+      );
+    }
+  };
+
   const undoLastAction = async () => {
     if (!connectionRef.current) {
       return;
@@ -899,13 +919,21 @@ function App() {
 
           {selectedElementMeta ? (
             <div
-              className="selection-chip"
+              className="selection-toolbar"
               style={{
                 left: `${selectedElementMeta.x}px`,
                 top: `${Math.max(selectedElementMeta.y - 34, 8)}px`,
               }}
             >
-              Drag to move
+              <div className="selection-chip">Drag to move</div>
+              <button
+                className="selection-delete"
+                onClick={() => void deleteSelectedElement()}
+                aria-label="Delete selected shape"
+                title="Delete"
+              >
+                ×
+              </button>
             </div>
           ) : null}
 

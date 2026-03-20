@@ -69,6 +69,17 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         }
     }
 
+    public WhiteboardRoomState RemoveElement(string roomId, string elementId)
+    {
+        var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
+        lock (room.SyncRoot)
+        {
+            room.Elements.RemoveAll(element => string.Equals(element.Id, elementId, StringComparison.Ordinal));
+            room.Touch();
+            return room.ToState();
+        }
+    }
+
     public WhiteboardRoomState RemoveLatestElementByUser(string roomId, string userId)
     {
         var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);

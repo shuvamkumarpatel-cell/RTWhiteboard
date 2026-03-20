@@ -9,6 +9,7 @@ public interface IWhiteboardRoomStore
     WhiteboardRoomState RemoveParticipant(string roomId, string connectionId);
     WhiteboardRoomState AddElement(string roomId, WhiteboardElement element);
     WhiteboardRoomState UpdateElement(string roomId, WhiteboardElement element);
+    WhiteboardRoomState RemoveElement(string roomId, string elementId);
     WhiteboardRoomState RemoveLatestElementByUser(string roomId, string userId);
     WhiteboardRoomState ClearRoom(string roomId);
 }

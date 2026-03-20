@@ -289,9 +289,19 @@ h2 {
   cursor: text;
 }
 
-.selection-chip {
+.selection-toolbar {
   position: absolute;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.selection-chip {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
   background: rgba(8, 15, 30, 0.88);
@@ -299,6 +309,27 @@ h2 {
   color: #e0f2fe;
   font-size: 0.82rem;
   pointer-events: none;
+}
+
+.selection-toolbar .selection-chip {
+  position: static;
+}
+
+.selection-delete {
+  width: 1.9rem;
+  height: 1.9rem;
+  min-width: 1.9rem;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.92);
+  color: #fff7f7;
+  font-size: 1rem;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.3);
+}
+
+.selection-delete:hover {
+  background: #ef4444;
 }
 
 .text-editor {
