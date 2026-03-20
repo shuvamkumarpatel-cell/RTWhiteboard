@@ -7,7 +7,7 @@ import {
   LogLevel,
 } from "@microsoft/signalr";
 import type { editor as MonacoEditor } from "monaco-editor";
-import { createRoom, endpoints, fetchRoom } from "./lib/api";
+import { createRoom, endpoints, fetchRoom, runCode } from "./lib/api";
 import {
   getElementBounds,
   hitTestElement,
@@ -112,6 +112,9 @@ function App() {
   const [textEditor, setTextEditor] = useState<TextEditorState | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceViewMode>("split");
   const [codeDocument, setCodeDocument] = useState<CodeDocument>(defaultCodeDocument);
+  const [codeInput, setCodeInput] = useState("");
+  const [codeOutput, setCodeOutput] = useState("Run your code to see output here.");
+  const [isRunningCode, setIsRunningCode] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -823,6 +826,39 @@ function App() {
     }
   };
 
+  const executeCode = async () => {
+    if (!isRoomConnected) {
+      setErrorMessage("Join a room before running code.");
+      return;
+    }
+
+    setIsRunningCode(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await runCode(
+        codeDocument.language,
+        codeDocument.content,
+        codeInput,
+      );
+
+      const sections = [
+        response.output ? `Output:\n${response.output}` : null,
+        response.error ? `Error:\n${response.error}` : null,
+        !response.output && !response.error ? "Program finished with no output." : null,
+      ].filter(Boolean);
+
+      setCodeOutput(sections.join("\n\n"));
+    } catch (error) {
+      setCodeOutput("");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to run the code.",
+      );
+    } finally {
+      setIsRunningCode(false);
+    }
+  };
+
   const activeParticipantNames = participants.map((participant) => participant.name);
 
   const boardHelpText =
@@ -1189,6 +1225,32 @@ function App() {
                     queueCodeDocumentUpdate(nextDocument);
                   }}
                 />
+              </div>
+
+              <div className="code-runner">
+                <div className="code-runner-header">
+                  <h2>Run Console</h2>
+                  <button onClick={() => void executeCode()} disabled={!isRoomConnected || isRunningCode}>
+                    {isRunningCode ? "Running..." : "Run code"}
+                  </button>
+                </div>
+
+                <label className="field">
+                  <span>Program input</span>
+                  <textarea
+                    className="code-runner-input"
+                    value={codeInput}
+                    onChange={(event) => setCodeInput(event.target.value)}
+                    placeholder="Type stdin here..."
+                    spellCheck={false}
+                    disabled={!isRoomConnected}
+                  />
+                </label>
+
+                <div className="code-output-panel">
+                  <div className="code-output-label">Output</div>
+                  <pre>{codeOutput}</pre>
+                </div>
               </div>
             </section>
           ) : null}

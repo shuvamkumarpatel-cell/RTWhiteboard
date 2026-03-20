@@ -9,6 +9,7 @@ var allowedOrigins = GetAllowedOrigins(builder.Configuration);
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IWhiteboardRoomStore, InMemoryWhiteboardRoomStore>();
+builder.Services.AddSingleton<ICodeExecutionService, NodeCodeExecutionService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(

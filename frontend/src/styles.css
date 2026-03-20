@@ -340,6 +340,58 @@ h2 {
   background: #020617;
 }
 
+.code-runner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-height: 250px;
+}
+
+.code-runner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.code-runner-input {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  border-radius: 1rem;
+  border: 1px solid rgba(51, 65, 85, 0.85);
+  background: #020617;
+  color: #dbeafe;
+  padding: 0.9rem 1rem;
+  font: 500 0.92rem/1.5 "Cascadia Code", Consolas, monospace;
+}
+
+.code-output-panel {
+  min-height: 0;
+  border-radius: 1rem;
+  border: 1px solid rgba(51, 65, 85, 0.85);
+  background: #020617;
+  overflow: auto;
+}
+
+.code-output-label {
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.85);
+  color: #93c5fd;
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.code-output-panel pre {
+  margin: 0;
+  padding: 0.95rem 1rem 1rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #dbeafe;
+  font: 500 0.92rem/1.6 "Cascadia Code", Consolas, monospace;
+}
+
 .code-editor-header {
   display: flex;
   align-items: flex-start;

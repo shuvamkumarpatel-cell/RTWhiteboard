@@ -8,6 +8,13 @@ export const endpoints = {
   hubUrl: `${apiBaseUrl}/hubs/whiteboard`,
 };
 
+export type RunCodeResponse = {
+  succeeded: boolean;
+  exitCode: number;
+  output: string;
+  error: string;
+};
+
 export async function createRoom() {
   const response = await fetch(`${apiBaseUrl}/api/rooms`, {
     method: "POST",
@@ -28,4 +35,24 @@ export async function fetchRoom(roomId: string) {
   }
 
   return (await response.json()) as RoomState;
+}
+
+export async function runCode(language: string, code: string, input: string) {
+  const response = await fetch(`${apiBaseUrl}/api/code/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      language,
+      code,
+      input,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to run the code.");
+  }
+
+  return (await response.json()) as RunCodeResponse;
 }
