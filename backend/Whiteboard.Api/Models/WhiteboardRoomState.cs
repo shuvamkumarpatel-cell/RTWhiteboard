@@ -5,5 +5,6 @@ public sealed record WhiteboardRoomState(
     DateTimeOffset CreatedAt,
     IReadOnlyCollection<WhiteboardElement> Elements,
     WhiteboardCodeDocument CodeDocument,
+    string WorkspaceView,
     IReadOnlyCollection<WhiteboardParticipant> Participants,
     DateTimeOffset UpdatedAt);

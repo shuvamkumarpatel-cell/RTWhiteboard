@@ -86,6 +86,14 @@ public sealed class WhiteboardHub(IWhiteboardRoomStore roomStore) : Hub
         await Clients.Group(request.RoomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
     }
 
+    public async Task UpdateWorkspaceView(UpdateWorkspaceViewRequest request)
+    {
+        var state = _roomStore.UpdateWorkspaceView(request.RoomId, request.ViewMode);
+
+        await Clients.Group(request.RoomId).SendAsync("RoomStateSynchronized", state);
+        await Clients.Group(request.RoomId).SendAsync("RoomMetadataUpdated", state.UpdatedAt);
+    }
+
     public async Task DeleteBoardElement(string roomId, string elementId)
     {
         var state = _roomStore.RemoveElement(roomId, elementId);

@@ -80,6 +80,17 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         }
     }
 
+    public WhiteboardRoomState UpdateWorkspaceView(string roomId, string viewMode)
+    {
+        var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
+        lock (room.SyncRoot)
+        {
+            room.WorkspaceView = viewMode;
+            room.Touch();
+            return room.ToState();
+        }
+    }
+
     public WhiteboardRoomState RemoveElement(string roomId, string elementId)
     {
         var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
@@ -133,6 +144,7 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
             """,
             null,
             DateTimeOffset.UtcNow);
+        public string WorkspaceView { get; set; } = "split";
         public Dictionary<string, WhiteboardParticipant> Participants { get; } = new(StringComparer.Ordinal);
         public object SyncRoot { get; } = new();
 
@@ -152,6 +164,7 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
                 CreatedAt,
                 Elements.ToArray(),
                 CodeDocument,
+                WorkspaceView,
                 Participants.Values
                     .OrderBy(participant => participant.Name, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),

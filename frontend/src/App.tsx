@@ -19,11 +19,13 @@ import type {
   CodeDocument,
   Participant,
   RoomState,
+  WorkspaceViewMode,
 } from "./types";
 
 const palette = ["#0f172a", "#2563eb", "#0891b2", "#16a34a", "#ea580c", "#dc2626"];
 const brushSizes = [2, 4, 8, 12];
 const fontSizes = [18, 24, 32, 40];
+const boardSurfaceSize = { width: 1600, height: 1000 };
 const toolDefinitions: Array<{ value: BoardTool; label: string }> = [
   { value: "select", label: "Select" },
   { value: "pen", label: "Pen" },
@@ -33,6 +35,11 @@ const toolDefinitions: Array<{ value: BoardTool; label: string }> = [
   { value: "rectangle", label: "Rectangle" },
   { value: "ellipse", label: "Ellipse" },
   { value: "text", label: "Text" },
+];
+const workspaceViewModes: Array<{ value: WorkspaceViewMode; label: string }> = [
+  { value: "board", label: "Whiteboard" },
+  { value: "split", label: "Both" },
+  { value: "code", label: "Code" },
 ];
 
 type DraftElement = Omit<BoardElement, "id" | "userId" | "createdAt">;
@@ -94,14 +101,15 @@ function App() {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [draftElement, setDraftElement] = useState<DraftElement | null>(null);
   const [textEditor, setTextEditor] = useState<TextEditorState | null>(null);
-  const [showCodeEditor, setShowCodeEditor] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceViewMode>("split");
   const [codeDocument, setCodeDocument] = useState<CodeDocument>(defaultCodeDocument);
   const [isConnecting, setIsConnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const connectionRef = useRef<HubConnection | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const boardRef = useRef<HTMLDivElement | null>(null);
+  const boardViewportRef = useRef<HTMLDivElement | null>(null);
+  const boardSurfaceRef = useRef<HTMLDivElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const isDrawingRef = useRef(false);
   const draftElementRef = useRef<DraftElement | null>(null);
@@ -123,16 +131,17 @@ function App() {
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    const board = boardRef.current;
+    const boardViewport = boardViewportRef.current;
+    const boardSurface = boardSurfaceRef.current;
 
-    if (!canvas || !board) {
+    if (!canvas || !boardViewport || !boardSurface) {
       return;
     }
 
     const resizeCanvas = () => {
       const ratio = window.devicePixelRatio || 1;
-      const width = board.clientWidth;
-      const height = board.clientHeight;
+      const width = boardSurface.clientWidth;
+      const height = boardSurface.clientHeight;
 
       canvas.width = width * ratio;
       canvas.height = height * ratio;
@@ -148,7 +157,8 @@ function App() {
     resizeCanvas();
 
     const observer = new ResizeObserver(resizeCanvas);
-    observer.observe(board);
+    observer.observe(boardViewport);
+    observer.observe(boardSurface);
     window.addEventListener("resize", resizeCanvas);
 
     return () => {
@@ -193,6 +203,7 @@ function App() {
     setParticipants(room.participants);
     setElements(room.elements);
     setCodeDocument(room.codeDocument);
+    setWorkspaceView(room.workspaceView);
   };
 
   const connectToRoom = async (targetRoomId: string) => {
@@ -429,6 +440,25 @@ function App() {
     }
 
     setTextEditor(nextEditor);
+  };
+
+  const updateWorkspaceLayout = async (viewMode: WorkspaceViewMode) => {
+    setWorkspaceView(viewMode);
+
+    if (!connectionRef.current) {
+      return;
+    }
+
+    try {
+      await connectionRef.current.invoke("UpdateWorkspaceView", {
+        roomId,
+        viewMode,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to update the workspace layout.",
+      );
+    }
   };
 
   const closeTextEditor = () => {
@@ -761,7 +791,7 @@ function App() {
           : "Drag on the board to place the selected shape.";
 
   const editorStyle = useMemo(() => {
-    if (!textEditor || !boardRef.current) {
+    if (!textEditor || !boardSurfaceRef.current) {
       return null;
     }
 
@@ -937,12 +967,17 @@ function App() {
             <h2>{roomId || "studio"}</h2>
           </div>
           <div className="workspace-actions">
-            <button
-              className="secondary"
-              onClick={() => setShowCodeEditor((current) => !current)}
-            >
-              {showCodeEditor ? "Hide code editor" : "Open code editor"}
-            </button>
+            <div className="view-toggle">
+              {workspaceViewModes.map((view) => (
+                <button
+                  key={view.value}
+                  className={workspaceView === view.value ? "view-pill active" : "view-pill"}
+                  onClick={() => void updateWorkspaceLayout(view.value)}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
             <button
               className="secondary"
               onClick={() =>
@@ -956,71 +991,84 @@ function App() {
           </div>
         </div>
 
-        <div className={showCodeEditor ? "workspace-body split" : "workspace-body"}>
-          <div className="board" ref={boardRef}>
-            <canvas
-              ref={canvasRef}
-              className={`board-canvas tool-${selectedTool}`}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={(event) => void finishInteraction(event)}
-              onPointerLeave={(event) => void finishInteraction(event)}
-            />
-
-            {selectedElementMeta ? (
-              <div
-                className="selection-toolbar"
-                style={{
-                  left: `${selectedElementMeta.x}px`,
-                  top: `${Math.max(selectedElementMeta.y - 34, 8)}px`,
-                }}
-              >
-                <div className="selection-chip">Drag to move</div>
-                <button
-                  className="selection-delete"
-                  onClick={() => void deleteSelectedElement()}
-                  aria-label="Delete selected shape"
-                  title="Delete"
-                >
-                  ×
-                </button>
-              </div>
-            ) : null}
-
-            {textEditor && editorStyle ? (
-              <div className="text-editor" style={editorStyle}>
-                <textarea
-                  ref={textAreaRef}
-                  value={textEditor.value}
-                  onChange={(event) =>
-                    setTextEditor((current) =>
-                      current
-                        ? {
-                            ...current,
-                            value: event.target.value,
-                          }
-                        : current,
-                    )
-                  }
-                  onKeyDown={(event) => {
-                    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                      event.preventDefault();
-                      void submitTextEditor();
-                    }
+        <div className={`workspace-body mode-${workspaceView}`}>
+          {workspaceView !== "code" ? (
+            <div className="board-shell">
+              <div className="board-viewport" ref={boardViewportRef}>
+                <div
+                  className="board-surface"
+                  ref={boardSurfaceRef}
+                  style={{
+                    width: `${boardSurfaceSize.width}px`,
+                    height: `${boardSurfaceSize.height}px`,
                   }}
-                  placeholder="Type your text..."
-                />
-                <div className="text-editor-actions">
-                  <button onClick={() => void submitTextEditor()}>Save</button>
-                  <button className="secondary" onClick={closeTextEditor}>
-                    Cancel
-                  </button>
+                >
+                  <canvas
+                    ref={canvasRef}
+                    className={`board-canvas tool-${selectedTool}`}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={(event) => void finishInteraction(event)}
+                    onPointerLeave={(event) => void finishInteraction(event)}
+                  />
+
+                  {selectedElementMeta ? (
+                    <div
+                      className="selection-toolbar"
+                      style={{
+                        left: `${selectedElementMeta.x}px`,
+                        top: `${Math.max(selectedElementMeta.y - 34, 8)}px`,
+                      }}
+                    >
+                      <div className="selection-chip">Drag to move</div>
+                      <button
+                        className="selection-delete"
+                        onClick={() => void deleteSelectedElement()}
+                        aria-label="Delete selected shape"
+                        title="Delete"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {textEditor && editorStyle ? (
+                    <div className="text-editor" style={editorStyle}>
+                      <textarea
+                        ref={textAreaRef}
+                        value={textEditor.value}
+                        onChange={(event) =>
+                          setTextEditor((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  value: event.target.value,
+                                }
+                              : current,
+                          )
+                        }
+                        onKeyDown={(event) => {
+                          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                            event.preventDefault();
+                            void submitTextEditor();
+                          }
+                        }}
+                        placeholder="Type your text..."
+                      />
+                      <div className="text-editor-actions">
+                        <button onClick={() => void submitTextEditor()}>Save</button>
+                        <button className="secondary" onClick={closeTextEditor}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
-          {showCodeEditor ? (
+          {workspaceView !== "board" ? (
             <section className="code-editor-panel">
               <div className="code-editor-header">
                 <div>
@@ -1052,6 +1100,7 @@ function App() {
                   queueCodeDocumentUpdate(nextDocument);
                 }}
                 spellCheck={false}
+                wrap="off"
               />
             </section>
           ) : null}

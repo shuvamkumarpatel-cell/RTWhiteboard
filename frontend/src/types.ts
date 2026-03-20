@@ -41,10 +41,13 @@ export type CodeDocument = {
   updatedAt: string;
 };
 
+export type WorkspaceViewMode = "board" | "code" | "split";
+
 export type RoomState = {
   roomId: string;
   elements: BoardElement[];
   codeDocument: CodeDocument;
+  workspaceView: WorkspaceViewMode;
   participants: Participant[];
   updatedAt: string;
 };
