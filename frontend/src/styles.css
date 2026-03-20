@@ -331,6 +331,15 @@ h2 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+.code-editor-surface {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(51, 65, 85, 0.85);
+  background: #020617;
+}
+
 .code-editor-header {
   display: flex;
   align-items: flex-start;
@@ -345,26 +354,6 @@ h2 {
   gap: 0.35rem;
   color: #93c5fd;
   font-size: 0.88rem;
-}
-
-.code-editor-textarea {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  resize: none;
-  overflow: auto;
-  border-radius: 1rem;
-  border: 1px solid rgba(51, 65, 85, 0.85);
-  background: #020617;
-  color: #dbeafe;
-  padding: 1rem;
-  font: 500 0.95rem/1.6 "Cascadia Code", "Fira Code", Consolas, monospace;
-  outline: none;
-}
-
-.code-editor-textarea:focus {
-  border-color: rgba(14, 165, 233, 0.65);
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
 }
 
 .board-surface canvas {

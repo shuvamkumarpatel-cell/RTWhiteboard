@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as CanvasPointerEvent } from "react";
+import Editor, { type Monaco, type OnMount } from "@monaco-editor/react";
 import {
   HubConnection,
   HubConnectionBuilder,
   LogLevel,
 } from "@microsoft/signalr";
+import type { editor as MonacoEditor } from "monaco-editor";
 import { createRoom, endpoints, fetchRoom } from "./lib/api";
 import {
   getElementBounds,
@@ -75,6 +77,13 @@ const defaultCodeDocument: CodeDocument = {
   lastEditedBy: null,
   updatedAt: new Date(0).toISOString(),
 };
+const monacoLanguageMap: Record<string, string> = {
+  typescript: "typescript",
+  javascript: "javascript",
+  json: "json",
+  html: "html",
+  css: "css",
+};
 
 const randomId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -116,6 +125,7 @@ function App() {
   const dragRef = useRef<DragState | null>(null);
   const autoSelectRef = useRef<AutoSelectState | null>(null);
   const codeSyncTimeoutRef = useRef<number | null>(null);
+  const monacoEditorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
 
   const updateDraftElement = (value: DraftElement | null) => {
     draftElementRef.current = value;
@@ -415,6 +425,40 @@ function App() {
         content: nextDocument.content,
       });
     }, 180);
+  };
+
+  const handleCodeEditorMount: OnMount = (
+    editor,
+    monaco: Monaco,
+  ) => {
+    monacoEditorRef.current = editor;
+    const typescriptApi = (monaco.languages as typeof monaco.languages & {
+      typescript: {
+        typescriptDefaults: {
+          setCompilerOptions: (options: Record<string, unknown>) => void;
+          setDiagnosticsOptions: (options: Record<string, unknown>) => void;
+        };
+        ScriptTarget: Record<string, unknown>;
+        ModuleKind: Record<string, unknown>;
+        ModuleResolutionKind: Record<string, unknown>;
+        JsxEmit: Record<string, unknown>;
+      };
+    }).typescript;
+
+    typescriptApi.typescriptDefaults.setCompilerOptions({
+      allowNonTsExtensions: true,
+      target: typescriptApi.ScriptTarget.ES2022,
+      module: typescriptApi.ModuleKind.ESNext,
+      moduleResolution: typescriptApi.ModuleResolutionKind.NodeJs,
+      jsx: typescriptApi.JsxEmit.ReactJSX,
+      strict: true,
+      esModuleInterop: true,
+    });
+
+    typescriptApi.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+    });
   };
 
   const openTextEditor = (point: BoardPoint, element?: BoardElement | null) => {
@@ -811,6 +855,8 @@ function App() {
     return getElementBounds(canvasRef.current, selectedElement);
   }, [selectedElement]);
 
+  const isRoomConnected = connectionRef.current !== null;
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -1085,23 +1131,65 @@ function App() {
                 </div>
               </div>
 
-              <textarea
-                className="code-editor-textarea"
-                value={codeDocument.content}
-                onChange={(event) => {
-                  const nextDocument = {
-                    ...codeDocument,
-                    content: event.target.value,
-                    lastEditedBy: displayName.trim() || initialName,
-                    updatedAt: new Date().toISOString(),
-                  };
+              {!isRoomConnected ? (
+                <p className="helper-text">
+                  Join a room to start editing the shared code document.
+                </p>
+              ) : null}
 
-                  setCodeDocument(nextDocument);
-                  queueCodeDocumentUpdate(nextDocument);
-                }}
-                spellCheck={false}
-                wrap="off"
-              />
+              <div className="code-editor-surface">
+                <Editor
+                  height="100%"
+                  defaultLanguage="typescript"
+                  language={monacoLanguageMap[codeDocument.language] ?? "plaintext"}
+                  value={codeDocument.content}
+                  onMount={handleCodeEditorMount}
+                  theme="vs-dark"
+                  options={{
+                    automaticLayout: true,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    wordWrap: "off",
+                    fontSize: 15,
+                    tabSize: 2,
+                    readOnly: !isRoomConnected,
+                    domReadOnly: !isRoomConnected,
+                    readOnlyMessage: {
+                      value: "Join a room to edit the shared code document.",
+                    },
+                    suggestOnTriggerCharacters: true,
+                    quickSuggestions: {
+                      other: isRoomConnected,
+                      comments: false,
+                      strings: isRoomConnected,
+                    },
+                    inlineSuggest: {
+                      enabled: isRoomConnected,
+                    },
+                    scrollbar: {
+                      vertical: "auto",
+                      horizontal: "auto",
+                      alwaysConsumeMouseWheel: false,
+                    },
+                  }}
+                  onChange={(value) => {
+                    if (!isRoomConnected) {
+                      return;
+                    }
+
+                    const nextContent = value ?? "";
+                    const nextDocument = {
+                      ...codeDocument,
+                      content: nextContent,
+                      lastEditedBy: displayName.trim() || initialName,
+                      updatedAt: new Date().toISOString(),
+                    };
+
+                    setCodeDocument(nextDocument);
+                    queueCodeDocumentUpdate(nextDocument);
+                  }}
+                />
+              </div>
             </section>
           ) : null}
         </div>
