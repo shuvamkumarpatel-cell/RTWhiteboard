@@ -33,9 +33,18 @@ export type Participant = {
   joinedAt: string;
 };
 
+export type CodeDocument = {
+  fileName: string;
+  language: string;
+  content: string;
+  lastEditedBy?: string | null;
+  updatedAt: string;
+};
+
 export type RoomState = {
   roomId: string;
   elements: BoardElement[];
+  codeDocument: CodeDocument;
   participants: Participant[];
   updatedAt: string;
 };

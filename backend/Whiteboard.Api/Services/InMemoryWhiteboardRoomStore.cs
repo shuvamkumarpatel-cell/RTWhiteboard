@@ -69,6 +69,17 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         }
     }
 
+    public WhiteboardRoomState UpdateCodeDocument(string roomId, WhiteboardCodeDocument document)
+    {
+        var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
+        lock (room.SyncRoot)
+        {
+            room.CodeDocument = document;
+            room.Touch();
+            return room.ToState();
+        }
+    }
+
     public WhiteboardRoomState RemoveElement(string roomId, string elementId)
     {
         var room = _rooms.GetOrAdd(roomId, WhiteboardRoom.Create);
@@ -112,6 +123,16 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         public DateTimeOffset CreatedAt { get; init; }
         public DateTimeOffset UpdatedAt { get; private set; }
         public List<WhiteboardElement> Elements { get; } = [];
+        public WhiteboardCodeDocument CodeDocument { get; set; } = new(
+            "main.ts",
+            "typescript",
+            """
+            export function helloWhiteboard(name: string) {
+              return `Hello, ${name}!`;
+            }
+            """,
+            null,
+            DateTimeOffset.UtcNow);
         public Dictionary<string, WhiteboardParticipant> Participants { get; } = new(StringComparer.Ordinal);
         public object SyncRoot { get; } = new();
 
@@ -130,6 +151,7 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
                 RoomId,
                 CreatedAt,
                 Elements.ToArray(),
+                CodeDocument,
                 Participants.Values
                     .OrderBy(participant => participant.Name, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
