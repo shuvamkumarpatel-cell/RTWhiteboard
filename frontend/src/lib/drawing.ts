@@ -325,11 +325,14 @@ export function hitTestElement(
     return false;
   }
 
+  if (element.kind === "eraser") {
+    return false;
+  }
+
   const tolerance = Math.max(element.width + 6, 10);
 
   switch (element.kind) {
     case "pen":
-    case "eraser":
       for (let index = 1; index < element.points.length; index += 1) {
         if (
           distanceToSegment(point, element.points[index - 1], element.points[index]) <=

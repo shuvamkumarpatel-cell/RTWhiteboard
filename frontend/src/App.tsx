@@ -47,12 +47,15 @@ type DragState = {
   pointerId: number;
   origin: BoardPoint;
   baseElement: BoardElement;
+  hasMoved: boolean;
 };
 
 type AutoSelectState = {
   elementId: string;
   returnTool: BoardTool;
 };
+
+const shapeTools: BoardTool[] = ["line", "arrow", "rectangle", "ellipse"];
 
 const randomId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -400,6 +403,15 @@ function App() {
     setSelectedTool("select");
   };
 
+  const restoreAutoSelectedTool = () => {
+    if (!autoSelectRef.current) {
+      return;
+    }
+
+    setSelectedTool(autoSelectRef.current.returnTool);
+    autoSelectRef.current = null;
+  };
+
   const submitTextEditor = async () => {
     if (!textEditor) {
       return;
@@ -479,7 +491,17 @@ function App() {
       setSelectedElementId(hitElement?.id ?? null);
 
       if (!hitElement) {
-        autoSelectRef.current = null;
+        restoreAutoSelectedTool();
+        setSelectedElementId(null);
+        setTextEditor(null);
+        return;
+      }
+
+      if (
+        autoSelectRef.current &&
+        autoSelectRef.current.elementId !== hitElement.id
+      ) {
+        restoreAutoSelectedTool();
         return;
       }
 
@@ -488,6 +510,7 @@ function App() {
         pointerId: event.pointerId,
         origin: point,
         baseElement: hitElement,
+        hasMoved: false,
       };
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
@@ -513,6 +536,12 @@ function App() {
     if (dragState) {
       const deltaX = point.x - dragState.origin.x;
       const deltaY = point.y - dragState.origin.y;
+
+      if (!dragState.hasMoved && Math.hypot(deltaX, deltaY) < 3) {
+        return;
+      }
+
+      dragState.hasMoved = true;
       const movedElement = translateElement(dragState.baseElement, deltaX, deltaY);
 
       setElements((current) =>
@@ -552,6 +581,12 @@ function App() {
 
     if (dragRef.current) {
       const dragState = dragRef.current;
+      dragRef.current = null;
+
+      if (!dragState.hasMoved) {
+        return;
+      }
+
       const currentPoint = point ?? dragState.origin;
       const movedElement = translateElement(
         dragState.baseElement,
@@ -559,7 +594,6 @@ function App() {
         currentPoint.y - dragState.origin.y,
       );
 
-      dragRef.current = null;
       await updateElement(movedElement);
 
       if (autoSelectRef.current?.elementId === movedElement.id) {
@@ -588,11 +622,27 @@ function App() {
       return;
     }
 
+    if (
+      shapeTools.includes(currentDraft.kind) &&
+      currentDraft.points.length >= 2 &&
+      Math.hypot(
+        currentDraft.points[currentDraft.points.length - 1]!.x - currentDraft.points[0]!.x,
+        currentDraft.points[currentDraft.points.length - 1]!.y - currentDraft.points[0]!.y,
+      ) < 3
+    ) {
+      updateDraftElement(null);
+      return;
+    }
+
     updateDraftElement(null);
     const returnTool = selectedTool;
     const createdElement = await sendElement(currentDraft);
 
-    if (createdElement) {
+    if (
+      createdElement &&
+      createdElement.kind !== "eraser" &&
+      createdElement.kind !== "pen"
+    ) {
       armAutoSelect(createdElement.id, returnTool);
     }
   };
