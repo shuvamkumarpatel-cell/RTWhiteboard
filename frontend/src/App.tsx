@@ -1228,17 +1228,11 @@ function App() {
                     value={codeDocument.language}
                     onChange={(event) => {
                       const nextLanguage = event.target.value;
-                      const shouldReplaceWithStarter =
-                        !codeDocument.content.trim() ||
-                        codeDocument.content ===
-                          (languageStarterTemplates[codeDocument.language] ?? "");
                       const nextDocument = {
                         ...codeDocument,
                         language: nextLanguage,
                         fileName: `main.${languageFileExtensions[nextLanguage] ?? "txt"}`,
-                        content: shouldReplaceWithStarter
-                          ? languageStarterTemplates[nextLanguage] ?? ""
-                          : codeDocument.content,
+                        content: languageStarterTemplates[nextLanguage] ?? "",
                         updatedAt: new Date().toISOString(),
                       };
 

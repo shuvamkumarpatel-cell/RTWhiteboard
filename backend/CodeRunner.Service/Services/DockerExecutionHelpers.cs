@@ -7,6 +7,8 @@ namespace CodeRunner.Service.Services;
 
 internal static class DockerExecutionHelpers
 {
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
     public static async Task<RunCodeResponse> RunInContainerAsync(
         string languageDisplayName,
         string languageKey,
@@ -32,8 +34,8 @@ internal static class DockerExecutionHelpers
         var sourcePath = Path.Combine(tempDirectory, fileName);
         var inputPath = Path.Combine(tempDirectory, "stdin.txt");
 
-        await File.WriteAllTextAsync(sourcePath, code, Encoding.UTF8, cancellationToken);
-        await File.WriteAllTextAsync(inputPath, input ?? string.Empty, Encoding.UTF8, cancellationToken);
+        await File.WriteAllTextAsync(sourcePath, code, Utf8WithoutBom, cancellationToken);
+        await File.WriteAllTextAsync(inputPath, input ?? string.Empty, Utf8WithoutBom, cancellationToken);
 
         var timeout = TimeSpan.FromSeconds(timeoutSecondsOverride ?? options.TimeoutSeconds);
         var imageName = $"{options.ImagePrefix}/{languageKey}-runner:{options.ImageTag}";
