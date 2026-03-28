@@ -43,6 +43,55 @@ const workspaceViewModes: Array<{ value: WorkspaceViewMode; label: string }> = [
   { value: "split", label: "Both" },
   { value: "code", label: "Code" },
 ];
+const codeLanguageOptions = [
+  { value: "javascript", label: "JavaScript" },
+  { value: "python", label: "Python" },
+  { value: "java", label: "Java" },
+  { value: "cpp", label: "C++" },
+  { value: "csharp", label: "C#" },
+] as const;
+const executableLanguages = new Set([
+  "javascript",
+  "python",
+  "java",
+  "cpp",
+  "csharp",
+]);
+const languageStarterTemplates: Record<string, string> = {
+  javascript: [
+    "function greet(name) {",
+    "  return `Hello, ${name}!`;",
+    "}",
+    "",
+    "console.log(greet(\"Whiteboard\"));",
+  ].join("\n"),
+  python: [
+    "def greet(name: str) -> str:",
+    "    return f\"Hello, {name}!\"",
+    "",
+    "print(greet(\"Whiteboard\"))",
+  ].join("\n"),
+  java: [
+    "public class Main {",
+    "  public static void main(String[] args) {",
+    "    System.out.println(\"Hello, Whiteboard!\");",
+    "  }",
+    "}",
+  ].join("\n"),
+  cpp: [
+    "#include <iostream>",
+    "",
+    "int main() {",
+    "  std::cout << \"Hello, Whiteboard!\" << std::endl;",
+    "  return 0;",
+    "}",
+  ].join("\n"),
+  csharp: [
+    "using System;",
+    "",
+    "Console.WriteLine(\"Hello, Whiteboard!\");",
+  ].join("\n"),
+};
 
 type DraftElement = Omit<BoardElement, "id" | "userId" | "createdAt">;
 
@@ -67,22 +116,25 @@ type AutoSelectState = {
 
 const shapeTools: BoardTool[] = ["line", "arrow", "rectangle", "ellipse"];
 const defaultCodeDocument: CodeDocument = {
-  fileName: "main.ts",
-  language: "typescript",
-  content: [
-    "export function helloWhiteboard(name: string) {",
-    "  return `Hello, ${name}!`;",
-    "}",
-  ].join("\n"),
+  fileName: "main.js",
+  language: "javascript",
+  content: languageStarterTemplates.javascript,
   lastEditedBy: null,
   updatedAt: new Date(0).toISOString(),
 };
 const monacoLanguageMap: Record<string, string> = {
-  typescript: "typescript",
   javascript: "javascript",
-  json: "json",
-  html: "html",
-  css: "css",
+  python: "python",
+  java: "java",
+  cpp: "cpp",
+  csharp: "csharp",
+};
+const languageFileExtensions: Record<string, string> = {
+  javascript: "js",
+  python: "py",
+  java: "java",
+  cpp: "cpp",
+  csharp: "cs",
 };
 
 const randomId = () =>
@@ -832,6 +884,14 @@ function App() {
       return;
     }
 
+    if (!executableLanguages.has(codeDocument.language)) {
+      setErrorMessage(`${codeDocument.language.toUpperCase()} is not configured for code execution yet.`);
+      setCodeOutput(
+        "Execution is available for JavaScript, Python, Java, C++, and C#.",
+      );
+      return;
+    }
+
     setIsRunningCode(true);
     setErrorMessage(null);
 
@@ -860,6 +920,14 @@ function App() {
   };
 
   const activeParticipantNames = participants.map((participant) => participant.name);
+  const isRoomConnected = connectionRef.current !== null;
+  const isExecutableLanguage = executableLanguages.has(codeDocument.language);
+  const canRunCode = isRoomConnected && isExecutableLanguage && !isRunningCode;
+  const codeEditorHelpText = !isRoomConnected
+    ? "Join a room to start editing the shared code document."
+    : isExecutableLanguage
+      ? "Code runs inside Docker-backed language sandboxes shared by the room."
+      : "This language has editor support only right now. Switch to a runnable language to execute code.";
 
   const boardHelpText =
     selectedTool === "select"
@@ -890,9 +958,6 @@ function App() {
 
     return getElementBounds(canvasRef.current, selectedElement);
   }, [selectedElement]);
-
-  const isRoomConnected = connectionRef.current !== null;
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -1158,7 +1223,36 @@ function App() {
                   <h2>{codeDocument.fileName}</h2>
                 </div>
                 <div className="code-meta">
-                  <span>{codeDocument.language}</span>
+                  <select
+                    className="code-language-select"
+                    value={codeDocument.language}
+                    onChange={(event) => {
+                      const nextLanguage = event.target.value;
+                      const shouldReplaceWithStarter =
+                        !codeDocument.content.trim() ||
+                        codeDocument.content ===
+                          (languageStarterTemplates[codeDocument.language] ?? "");
+                      const nextDocument = {
+                        ...codeDocument,
+                        language: nextLanguage,
+                        fileName: `main.${languageFileExtensions[nextLanguage] ?? "txt"}`,
+                        content: shouldReplaceWithStarter
+                          ? languageStarterTemplates[nextLanguage] ?? ""
+                          : codeDocument.content,
+                        updatedAt: new Date().toISOString(),
+                      };
+
+                      setCodeDocument(nextDocument);
+                      queueCodeDocumentUpdate(nextDocument);
+                    }}
+                    disabled={!isRoomConnected}
+                  >
+                    {codeLanguageOptions.map((language) => (
+                      <option key={language.value} value={language.value}>
+                        {language.label}
+                      </option>
+                    ))}
+                  </select>
                   <span>
                     {codeDocument.lastEditedBy
                       ? `Edited by ${codeDocument.lastEditedBy}`
@@ -1168,15 +1262,15 @@ function App() {
               </div>
 
               {!isRoomConnected ? (
-                <p className="helper-text">
-                  Join a room to start editing the shared code document.
-                </p>
-              ) : null}
+                <p className="helper-text">{codeEditorHelpText}</p>
+              ) : (
+                <p className="helper-text">{codeEditorHelpText}</p>
+              )}
 
               <div className="code-editor-surface">
                 <Editor
                   height="100%"
-                  defaultLanguage="typescript"
+                  defaultLanguage="javascript"
                   language={monacoLanguageMap[codeDocument.language] ?? "plaintext"}
                   value={codeDocument.content}
                   onMount={handleCodeEditorMount}
@@ -1230,7 +1324,7 @@ function App() {
               <div className="code-runner">
                 <div className="code-runner-header">
                   <h2>Run Console</h2>
-                  <button onClick={() => void executeCode()} disabled={!isRoomConnected || isRunningCode}>
+                  <button onClick={() => void executeCode()} disabled={!canRunCode}>
                     {isRunningCode ? "Running..." : "Run code"}
                   </button>
                 </div>

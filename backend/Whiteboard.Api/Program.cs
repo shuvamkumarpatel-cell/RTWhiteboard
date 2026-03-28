@@ -6,10 +6,11 @@ var builder = WebApplication.CreateBuilder(args);
 const string CorsPolicyName = "Frontend";
 var allowedOrigins = GetAllowedOrigins(builder.Configuration);
 
+builder.Services.Configure<CodeRunnerOptions>(builder.Configuration.GetSection("CodeRunner"));
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IWhiteboardRoomStore, InMemoryWhiteboardRoomStore>();
-builder.Services.AddSingleton<ICodeExecutionService, NodeCodeExecutionService>();
+builder.Services.AddHttpClient<ICodeExecutionService, RemoteCodeExecutionService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(

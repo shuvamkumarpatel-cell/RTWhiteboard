@@ -135,10 +135,10 @@ public sealed class InMemoryWhiteboardRoomStore : IWhiteboardRoomStore
         public DateTimeOffset UpdatedAt { get; private set; }
         public List<WhiteboardElement> Elements { get; } = [];
         public WhiteboardCodeDocument CodeDocument { get; set; } = new(
-            "main.ts",
-            "typescript",
+            "main.js",
+            "javascript",
             """
-            export function helloWhiteboard(name: string) {
+            function helloWhiteboard(name) {
               return `Hello, ${name}!`;
             }
             """,

@@ -1,0 +1,5 @@
+FROM eclipse-temurin:21-jdk-alpine
+WORKDIR /workspace
+COPY backend/CodeRunner.Service/images/java/run.sh /runner/run.sh
+RUN chmod +x /runner/run.sh
+ENTRYPOINT ["/runner/run.sh"]

@@ -10,6 +10,7 @@ A full-stack collaborative whiteboard built with an ASP.NET Core API backend and
 ## Project structure
 
 - `backend/Whiteboard.Api` - REST API and SignalR hub
+- `backend/CodeRunner.Service` - isolated execution service scaffold for code runs
 - `frontend` - React application
 
 ## Run the backend
@@ -23,6 +24,43 @@ dotnet run --project .\backend\Whiteboard.Api\Whiteboard.Api.csproj
 
 The API runs on `http://localhost:5240` by default.
 
+## Run the code runner
+
+```powershell
+$env:DOTNET_CLI_HOME="$PWD/.dotnet"
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1"
+dotnet restore .\backend\CodeRunner.Service\CodeRunner.Service.csproj --configfile .\backend\NuGet.Config
+dotnet run --project .\backend\CodeRunner.Service\CodeRunner.Service.csproj
+```
+
+The runner listens on `http://localhost:5360` by default. The main API forwards code-execution requests there.
+
+## Phase 2: Dockerized language sandboxes
+
+Phase 2 adds a dedicated runner service that executes code inside per-language Docker images instead of relying on host-installed compilers.
+
+Build the runner images:
+
+```powershell
+.\build-runner-images.cmd
+```
+
+Then run the runner service:
+
+```powershell
+.\run-runner.cmd
+```
+
+This architecture means the execution host only needs Docker plus the runner service. End users do not need to install language runtimes locally in the browser environment.
+
+Supported runnable languages in the current Docker setup:
+
+- JavaScript
+- Python
+- Java
+- C++
+- C#
+
 ## Run the frontend
 
 ```powershell
@@ -33,10 +71,26 @@ npm.cmd run dev --prefix .\frontend
 
 The Vite app runs on `http://localhost:5173`.
 
+## Run the full app
+
+Once the Docker images are built, you can launch runner, backend, and frontend together:
+
+```powershell
+.\run-all.cmd
+```
+
+This opens three terminal windows, one for each service:
+
+- code runner on `http://localhost:5360`
+- backend API on `http://localhost:5240`
+- frontend on `http://localhost:5173`
+
 ## Features
 
 - Shared rooms with generated room ids
 - Real-time drawing via SignalR
+- Shared code editor with Monaco-based autocomplete
+- Phase 1 remote code-runner architecture scaffold
 - Participant presence list
 - Brush color and size controls
 - Clear board action

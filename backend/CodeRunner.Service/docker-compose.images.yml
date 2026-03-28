@@ -1,0 +1,30 @@
+services:
+  javascript-runner:
+    image: rtwhiteboard/javascript-runner:latest
+    build:
+      context: ../..
+      dockerfile: backend/CodeRunner.Service/images/javascript/Dockerfile
+
+  python-runner:
+    image: rtwhiteboard/python-runner:latest
+    build:
+      context: ../..
+      dockerfile: backend/CodeRunner.Service/images/python/Dockerfile
+
+  java-runner:
+    image: rtwhiteboard/java-runner:latest
+    build:
+      context: ../..
+      dockerfile: backend/CodeRunner.Service/images/java/Dockerfile
+
+  cpp-runner:
+    image: rtwhiteboard/cpp-runner:latest
+    build:
+      context: ../..
+      dockerfile: backend/CodeRunner.Service/images/cpp/Dockerfile
+
+  csharp-runner:
+    image: rtwhiteboard/csharp-runner:latest
+    build:
+      context: ../..
+      dockerfile: backend/CodeRunner.Service/images/csharp/Dockerfile

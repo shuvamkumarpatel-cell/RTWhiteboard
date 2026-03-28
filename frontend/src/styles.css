@@ -18,7 +18,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -406,6 +407,15 @@ h2 {
   gap: 0.35rem;
   color: #93c5fd;
   font-size: 0.88rem;
+}
+
+.code-language-select {
+  min-width: 150px;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(51, 65, 85, 0.85);
+  background: #020617;
+  color: #dbeafe;
 }
 
 .board-surface canvas {
